@@ -36,6 +36,7 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
     }
 
     private final long id = nextTaskId.getAndIncrement();
+    // 触发时间，netty没有存储绝对时间戳，而是存了一个相对于START_TIME（一个常量）的时间戳
     private long deadlineNanos;
     /* 0 - no repeat, >0 - repeat at fixed rate, <0 - repeat with fixed delay */
     private final long periodNanos;
@@ -74,6 +75,7 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
     }
 
     public long deadlineNanos() {
+        // 触发时间，netty没有存储绝对时间戳，而是存了一个相对于START_TIME（一个常量）的时间戳
         return deadlineNanos;
     }
 

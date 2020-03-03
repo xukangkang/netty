@@ -167,6 +167,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         }
 
         p.addLast(new ChannelInitializer<Channel>() {
+            // 在 channel(此处指NioServerSocketChannel)被注册完成之后，会通过handlerAdded方法会调用initChannel方法，初始化channel，之后这个channelInitializer会被从pipeline中删除
             @Override
             public void initChannel(Channel ch) throws Exception {
                 final ChannelPipeline pipeline = ch.pipeline();

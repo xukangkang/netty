@@ -348,6 +348,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         }
 
                         int interestOps = key.interestOps();
+                        // 取消selectionKey在旧selector的注册，在新的selector上注册selectionKey
                         key.cancel();
                         SelectionKey newKey = key.channel().register(newSelector, interestOps, a);
                         if (a instanceof AbstractNioChannel) {
@@ -393,6 +394,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     protected void run() {
         for (;;) {
             try {
+                // 判断当前是否队列中（taskQueue,tailTasks）中是否有任务，如果没有任务，
+                // 则执行select进行I/O操作。如果有任务，进行switch之后的后续操作
                 switch (selectStrategy.calculateStrategy(selectNowSupplier, hasTasks())) {
                     case SelectStrategy.CONTINUE:
                         continue;
@@ -434,6 +437,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         // fallthrough
                 }
 
+                // 判断ioRatio的值，如果ioRatio == 100，则在处理完I/O操作后，会将全部task执行完毕；否则，按照I/O操作执行的时间的比例分配执行task的时间。例如ioRatio = 60，则I/O执行3秒，那么task最多执行2秒。
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
                 final int ioRatio = this.ioRatio;
@@ -455,10 +459,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     }
                 }
             } catch (Throwable t) {
+                // 处理异常，处理方式为记录日志，另外，sleep 1000ms(防止可能导致CPU过度消耗的连续即时故障)。
                 handleLoopException(t);
             }
             // Always handle shutdown even if the loop processing threw an exception.
             try {
+                // 如果eventLoop处于关闭中、已关闭、已终止，则进行清理操作
                 if (isShuttingDown()) {
                     closeAll();
                     if (confirmShutdown()) {
@@ -603,6 +609,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
         final AbstractNioChannel.NioUnsafe unsafe = ch.unsafe();
+        // 判断SelectionKey是否有效，如果SelectionKey被cancel或其对应的通道已关闭或其注册的selector已关闭，则无效。
         if (!k.isValid()) {
             final EventLoop eventLoop;
             try {
@@ -626,16 +633,21 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         try {
+            // 得到SelectionKey已经准备好的操作集，其中(readyOps & SelectionKey.OP_CONNECT) != 0代表有connection事件
+            // (readyOps & SelectionKey.OP_WRITE) != 0 代表有write事件
+            //
             int readyOps = k.readyOps();
             // We first need to call finishConnect() before try to trigger a read(...) or write(...) as otherwise
             // the NIO JDK channel implementation may throw a NotYetConnectedException.
+            // 按位与操作判断有否有connect事件(connect事件一般出现在客户端，当客户端连接到服务端之后，会出现connect事件)
             if ((readyOps & SelectionKey.OP_CONNECT) != 0) {
                 // remove OP_CONNECT as otherwise Selector.select(..) will always return without blocking
                 // See https://github.com/netty/netty/issues/924
+                // 连接成功之后取消SelectKey的OP_CONNECT事件的监听，否则可能出现Selector.select(timeout)立即返回（带着OP_CONNECT事件）
                 int ops = k.interestOps();
                 ops &= ~SelectionKey.OP_CONNECT;
                 k.interestOps(ops);
-
+                // 完成CONNECT操作
                 unsafe.finishConnect();
             }
 
@@ -733,8 +745,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     private void select(boolean oldWakenUp) throws IOException {
         Selector selector = this.selector;
         try {
+            // 进行selector.selectNow和select(time)的总次数，用于判断空轮训，当selectCnt大于 SELECTOR_AUTO_REBUILD_THRESHOLD
+            // 则表示出现了空轮训bug，调用rebuildSelector()解决空轮训bug
             int selectCnt = 0;
             long currentTimeNanos = System.nanoTime();
+            // 由于taskQueue中没有任务，所以这里根据scheduledTaskQueue中触发时间最近的task的deadlineNanos计算出一个本次for循环可以执行的最长时间戳selectDeadLineNanos。
             long selectDeadLineNanos = currentTimeNanos + delayNanos(currentTimeNanos);
             for (;;) {
                 long timeoutMillis = (selectDeadLineNanos - currentTimeNanos + 500000L) / 1000000L;
@@ -782,6 +797,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 }
 
                 long time = System.nanoTime();
+                // 如果已经超时了，设置selectCnt = 1
                 if (time - TimeUnit.MILLISECONDS.toNanos(timeoutMillis) >= currentTimeNanos) {
                     // timeoutMillis elapsed without anything selected.
                     selectCnt = 1;
@@ -792,7 +808,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     logger.warn(
                             "Selector.select() returned prematurely {} times in a row; rebuilding Selector {}.",
                             selectCnt, selector);
-
+                    // 出现了空轮训bug，调用rebuildSelector()方法，新建selector，将原来注册到selector上的key重新注册到新的selector上
                     rebuildSelector();
                     selector = this.selector;
 
