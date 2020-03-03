@@ -345,6 +345,7 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
         final Object m = next.pipeline.touch(ObjectUtil.checkNotNull(msg, "msg"), next);
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            // 在next节点的invokeChannelRead方法中调用handler的channelRead()方法
             next.invokeChannelRead(m);
         } else {
             executor.execute(new Runnable() {
@@ -359,6 +360,7 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
     private void invokeChannelRead(Object msg) {
         if (invokeHandler()) {
             try {
+                // 调用handler()方法返回handler，对handler进行channelRead方法调用，在channelRead方法中可以进行业务处理。一般来说，业务处理的ChannelHandler之前都需要有DecodeChannelHandler
                 ((ChannelInboundHandler) handler()).channelRead(this, msg);
             } catch (Throwable t) {
                 notifyHandlerException(t);
