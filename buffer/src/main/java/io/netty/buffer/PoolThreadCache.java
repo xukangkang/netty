@@ -41,14 +41,20 @@ final class PoolThreadCache {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(PoolThreadCache.class);
 
     final PoolArena<byte[]> heapArena;
+    // 通过directArena分配内存
     final PoolArena<ByteBuffer> directArena;
 
     // Hold the caches for the different size classes, which are tiny, small and normal.
+
     private final MemoryRegionCache<byte[]>[] tinySubPageHeapCaches;
     private final MemoryRegionCache<byte[]>[] smallSubPageHeapCaches;
+    // 数组长度为32，缓存16B,32B,48B......496B这些规格大小的subpage，MemoryRegionCache内部通过维护一个queue来存储同规格的subpage
     private final MemoryRegionCache<ByteBuffer>[] tinySubPageDirectCaches;
+    // 数组长度为4，缓存512B,1K,2K,4K这些规格大小的subpage，MemoryRegionCache内部通过维护一个queue来存储同规格的subpage
     private final MemoryRegionCache<ByteBuffer>[] smallSubPageDirectCaches;
     private final MemoryRegionCache<byte[]>[] normalHeapCaches;
+    // 数组长度为3，缓存8K,16K,32K这些规格大小的page，MemoryRegionCache内部通过维护一个queue来存储同规格的subpage
+    // 对于32K以上的空间，不进行缓存。猜测原因是可能很少有人会用到那么大的空间，假如缓存了，后续又很长一段时间用不到的话，就浪费了很多空间。
     private final MemoryRegionCache<ByteBuffer>[] normalDirectCaches;
 
     // Used for bitshifting when calculate the index of normal caches later

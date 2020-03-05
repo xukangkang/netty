@@ -108,7 +108,19 @@ final class PoolChunk<T> implements PoolChunkMetric {
     final boolean unpooled;
     final int offset;
 
+
+    // memoryMap[id]的value初始化的值为第id个节点的所属的深度。后续使用中，如果左子节点被使用，则value的值为左右子节点在树中的深度，如果右子节点也被使用
+    // 则value的值为树的最大深度 + 1
+    // 如下是chunk中各节点使用标记的逻辑图，
+    //                              0-16M
+    //                          0-8M    8-16M
+    //                      0-4M 4-8M  8-12M 12-16M
+    //                  .............................
+    //              .....................................
+    //            0-16K 16-32K 32-48K.......................
+    //     0-8K 8-16K  16-24K 24-32K............................
     private final byte[] memoryMap;
+    // depthMap[id]的value初始化的值为第id个节点的所属的深度
     private final byte[] depthMap;
     private final PoolSubpage<T>[] subpages;
     /** Used to determine if the requested capacity is equal to or greater than pageSize. */
@@ -277,10 +289,20 @@ final class PoolChunk<T> implements PoolChunkMetric {
         if (val > d) { // unusable
             return -1;
         }
+        // TODO (id & initial) == 0 ?
         while (val < d || (id & initial) == 0) { // id & initial == 1 << d for all ids at depth d, for < d it is 0
+            // 得到下一层的第一个节点的id
             id <<= 1;
+            // val = id代表的节点属于第几层
             val = value(id);
+            // 如果val大于d（d为入参，代表方法返回的目标在第几层），则表示可能是val节点已被使用或者val的子节点已被使用）.
             if (val > d) {
+                // 此时得到右边节点的深度，继续判断，此时，右边节点一定是没被使用过的（假设右边的节点已被使用，
+                // 那么左右节点的父亲节点的memoryMap[id]的value的值（子节点标记完被使用之后会调用下面的 updateParentsAlloc(id)方法递归更新父节点的value）
+                // 一定是整个树的最大深度 + 1的，即判断父亲节点的时候父亲节点已经不符合条件，更不会接着判断左右子节点（会去判断父亲节点的右边节点））
+                // 有两种情况会进到这里面来：
+                // 1，当前id所属的层 = d，但是id代表的节点已被使用，所以只能使用右边节点。
+                // 2，当前id所属的层 != d，此时id代表的节点已被使用或者id代表的节点的左右子节点都被使用了，此时会使用id代表的节点的右边节点。
                 id ^= 1;
                 val = value(id);
             }
@@ -301,6 +323,7 @@ final class PoolChunk<T> implements PoolChunkMetric {
      */
     private long allocateRun(int normCapacity) {
         int d = maxOrder - (log2(normCapacity) - pageShifts);
+        // 在这一层选出一个可用的handle
         int id = allocateNode(d);
         if (id < 0) {
             return id;
@@ -322,6 +345,7 @@ final class PoolChunk<T> implements PoolChunkMetric {
         PoolSubpage<T> head = arena.findSubpagePoolHead(normCapacity);
         synchronized (head) {
             int d = maxOrder; // subpages are only be allocated from pages i.e., leaves
+            // 找到一个可用的page
             int id = allocateNode(d);
             if (id < 0) {
                 return id;
@@ -329,12 +353,13 @@ final class PoolChunk<T> implements PoolChunkMetric {
 
             final PoolSubpage<T>[] subpages = this.subpages;
             final int pageSize = this.pageSize;
-
+            // chunk的可用空间减去pageSize
             freeBytes -= pageSize;
-
+            // 得到这个page在chunk的subpages中的下标
             int subpageIdx = subpageIdx(id);
             PoolSubpage<T> subpage = subpages[subpageIdx];
             if (subpage == null) {
+                // 如果等于空，则创建一个
                 subpage = new PoolSubpage<T>(head, this, id, runOffset(id), pageSize, normCapacity);
                 subpages[subpageIdx] = subpage;
             } else {
@@ -376,6 +401,7 @@ final class PoolChunk<T> implements PoolChunkMetric {
 
     void initBuf(PooledByteBuf<T> buf, long handle, int reqCapacity) {
         int memoryMapIdx = memoryMapIdx(handle);
+        // bitmapIdx在subpage中使用，用于计算子page在subpage中的相对位置
         int bitmapIdx = bitmapIdx(handle);
         if (bitmapIdx == 0) {
             byte val = value(memoryMapIdx);
@@ -402,6 +428,7 @@ final class PoolChunk<T> implements PoolChunkMetric {
 
         buf.init(
             this, handle,
+                    // 实际handle的值为page的偏移量 + subpage的子page在subpage中的偏移量
             runOffset(memoryMapIdx) + (bitmapIdx & 0x3FFFFFFF) * subpage.elemSize + offset,
                 reqCapacity, subpage.elemSize, arena.parent.threadCache());
     }

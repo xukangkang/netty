@@ -49,9 +49,18 @@ abstract class PoolArena<T> implements PoolArenaMetric {
     final int numSmallSubpagePools;
     final int directMemoryCacheAlignment;
     final int directMemoryCacheAlignmentMask;
+    // 数组长度为32，用于表示16B,32B,48B......496B这些规格大小的subpage，各个相同规格的subpage之间通过指针（prev,next）相连。
+    // 和PoolThreadCache中的xxxSubPageHeapCaches的区别是：
+    //      xxxSubPageHeapCaches中的MemoryRegionCache表示的是PoolSubpage中的一块，而PoolSubpage表示的是一个Page（8K），包含了一组相同空间大小的子page
     private final PoolSubpage<T>[] tinySubpagePools;
+    // 数组长度为4，用于表示512B,1K,2K,4K这些规格大小的subpage，各个相同规格的subpage之间通过指针（prev,next）相连。
     private final PoolSubpage<T>[] smallSubpagePools;
+    // 8K为一个page，获取8K以上的空间，直接将chunk和handle取走即可。
 
+    // 存储了使用率范围相同的的chunk，例如q050存储了使用率大于50%小于100%的chunk。
+    // 当chunk的使用率达到chunk的maxUsage的时候，会添加到下一个（next）chunk。
+    // 如果qInit q000 q025 q050 q075 q100中的chunk都没有空间可用，则会新建一个chunk，添加到qInit中。
+    // 同一个chunkList之间的chunk以指针相连（prev,next）。
     private final PoolChunkList<T> q050;
     private final PoolChunkList<T> q025;
     private final PoolChunkList<T> q000;
@@ -244,6 +253,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
         PoolChunk<T> c = newChunk(pageSize, maxOrder, pageShifts, chunkSize);
         long handle = c.allocate(normCapacity);
         assert handle > 0;
+        // 对byteBuffer进行初始化
         c.initBuf(buf, handle, reqCapacity);
         qInit.add(c);
     }
@@ -735,7 +745,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
         @Override
         protected PoolChunk<ByteBuffer> newChunk(int pageSize, int maxOrder,
                 int pageShifts, int chunkSize) {
-            if (directMemoryCacheAlignment == 0) {
+             if (directMemoryCacheAlignment == 0) {
                 return new PoolChunk<ByteBuffer>(this,
                         allocateDirect(chunkSize), pageSize, maxOrder,
                         pageShifts, chunkSize, 0);

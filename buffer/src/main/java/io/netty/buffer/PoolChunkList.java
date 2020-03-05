@@ -83,6 +83,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
 
         for (PoolChunk<T> cur = head;;) {
             long handle = cur.allocate(normCapacity);
+            // hardle < 0 表示没有分配到内存，找下一个chunk继续分配
             if (handle < 0) {
                 cur = cur.next;
                 if (cur == null) {
@@ -90,6 +91,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
                 }
             } else {
                 cur.initBuf(buf, handle, reqCapacity);
+                // 如果chunk的使用率大于chunkList的最大使用率，则从当前chunkList移除，放到下一个chunkList
                 if (cur.usage() >= maxUsage) {
                     remove(cur);
                     nextList.add(cur);

@@ -52,6 +52,7 @@ final class PoolSubpage<T> implements PoolSubpageMetric {
         this.memoryMapIdx = memoryMapIdx;
         this.runOffset = runOffset;
         this.pageSize = pageSize;
+        // 用bitmap记录subpage中各个子page中的使用标记
         bitmap = new long[pageSize >>> 10]; // pageSize / 16 / 64
         init(head, elemSize);
     }
@@ -68,9 +69,11 @@ final class PoolSubpage<T> implements PoolSubpageMetric {
             }
 
             for (int i = 0; i < bitmapLength; i ++) {
+                // 每一个二进制位记录一个子page的使用情况
                 bitmap[i] = 0;
             }
         }
+        // 将subpage添加到head后面
         addToPool(head);
     }
 

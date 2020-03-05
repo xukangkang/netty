@@ -521,6 +521,8 @@ final class PlatformDependent0 {
     }
 
     static byte getByte(byte[] data, int index) {
+        // 数组头部还存储有数组的长度信息，索引访问数组元素时需要知道第一个元素与起始位置的偏移地址，
+        // BYTE_ARRAY_BASE_OFFSET即第一个元素与起始位置的偏移地址
         return UNSAFE.getByte(data, BYTE_ARRAY_BASE_OFFSET + index);
     }
 

@@ -273,7 +273,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private boolean fetchFromScheduledTaskQueue() {
         // 获取的nanoTime不是绝对时间戳，是一个相对io.netty.util.concurrent.ScheduledFutureTask.START_TIME 的时间戳
         long nanoTime = AbstractScheduledEventExecutor.nanoTime();
-        // 从scheduledTask队列中（scheduledTask队列是一个PriorityQueue，scheduledTask实现了comparable接口，按照task的deadlineNanos（就是触发时间）去排序，deadlineNanos时间越小，越靠前）取得deadLineNanos
+        // 从scheduledTask队列中（scheduledTask队列是一个PriorityQueue，scheduledTask实现了comparable接口，
+        // 按照task的deadlineNanos（就是触发时间）去排序，deadlineNanos时间越小，越靠前）取得deadLineNanos
         // 小于nanoTime的scheduledTask，放入taskQueue中。
         Runnable scheduledTask  = pollScheduledTask(nanoTime);
         while (scheduledTask != null) {
@@ -359,8 +360,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             if (runAllTasksFrom(taskQueue)) {
                 ranAtLeastOne = true;
             }
-            // fetchedAll为false，表示在fetchFromScheduledTaskQueue方法中，试图往taskQueue中放scheduledTask时由于taskQueue已满，导致无法将scheduledTask放入taskQueue。
-            // 所以本次循环处理完taskQueue中的任务,我们再进行尝试fetchFromScheduledTaskQueue
+            // fetchedAll为false，表示在fetchFromScheduledTaskQueue方法中，试图往taskQueue中放scheduledTask时由于taskQueue已满，
+            // 导致无法将scheduledTask放入taskQueue。所以本次循环处理完taskQueue中的任务,我们再进行尝试fetchFromScheduledTaskQueue
         } while (!fetchedAll); // keep on processing until we fetched all scheduled tasks.
 
         if (ranAtLeastOne) {
